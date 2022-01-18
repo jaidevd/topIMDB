@@ -1,0 +1,13 @@
+schedule:
+  download:
+    function: imdb.download()
+    startup: true
+    thread: false
+
+url:
+  home:
+    pattern: /$YAMLURL/
+    handler: FileHandler
+    kwargs:
+      path: $YAMLPATH/index.html
+      template: true

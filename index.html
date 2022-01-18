@@ -1,0 +1,349 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <title>IMDb movies</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Latest compiled and minified CSS -->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <style>
+  .grid { margin-top: 10px; }
+  .main {
+    position: relative;
+  }
+  image { stroke: red; }
+  .cell {
+    vector-effect: non-scaling-stroke;
+    stroke-width: 1;
+    stroke: #fff;
+    fill: #08306B;
+  }
+  .active {
+    fill: #7F2704;
+    stroke: #000;
+  }
+  .brush .extent {
+    fill-opacity: .1;
+    vector-effect: non-scaling-stroke;
+    stroke: rgba(255, 0, 0, .2);
+  }
+  .table {
+    display: none;
+    position: absolute;
+    top: 100px;
+    background-color: #fff;
+    width: auto;
+    max-width: 500px;
+    font-size: 12px;
+    -webkit-box-shadow: 1px 1px 2px 1px rgba(0,0,0,.4);
+            box-shadow: 1px 1px 2px 1px rgba(0,0,0,.4);
+  }
+  .table .movie td, .table .movie th {
+    white-space: nowrap;
+    padding: 0 8px;
+    text-align: right;
+  }
+  .rating, .vote { pointer-events: none; }
+  .rating path, .vote path { stroke: #000; stroke-width: .5; stroke-dasharray: 2,4; stroke-linecap: round; }
+  </style>
+</head><body>
+
+<div class="container main">
+
+  <h1>Explore the Internet Movie Database</h2>
+  <form class="form-inline">
+    <div class="form-group">
+      <label for="Genre">Genre</label>
+      <select class="form-control" id="Genre"></select>
+    </div>
+    <div class="form-group">
+      <label for="Genre">Type</label>
+      <select class="form-control" id="Type"></select>
+    </div>
+    <div class="form-group">
+      <label for="Year">Decade</label>
+      <select class="form-control" id="Year"></select>
+    </div>
+    <div class="form-group">
+      <label for="Title">Search</label>
+      <input type="search" class="form-control" id="Title">
+    </div>
+  </form>
+
+  <svg class="grid"></svg>
+  <table class="table table-striped table-compressed">
+    <thead>
+      <tr><th>Title</th><th>Votes</th><th>Rating</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script src="https://unpkg.com/d3@3.5.17/d3.min.js"></script>
+<script>
+(function hoverzoom() {
+  var svg = d3.select('.treemap');
+  d3.selectAll('image').on('mouseenter', function() {
+    var node = d3.select(this);
+    node.attr({
+      'data-w': node.attr('width'),
+      'data-h': node.attr('height')
+    });
+    node.attr({ width:200, height: 300 });
+    svg.append(function() { return node.remove().node(); });
+  }).on('mouseleave', function() {
+    var node = d3.select(this);
+    node.attr({
+      width: node.attr('data-w'),
+      height: node.attr('data-h')
+    })
+  });
+})();
+
+var raw_data,
+    width = 960,
+    height = 420,
+    grid = d3.select('.grid').attr('width', width + 30).attr('height', width + 30),
+    scale = d3.scale.linear().range([0, width]).domain([0, 90]),
+    ratingscale = d3.scale.linear().domain([1, 10]).range([90, 0]),
+    votescale = d3.scale.log().domain([10000, 3000000]).range([0, 90]),
+    genres = ' Action Adventure Animation Biography Comedy Crime Documentary Drama Family Fantasy History Horror Music Musical Mystery Romance Sci-Fi Sport Thriller War Western'.split(/ /),
+    types = ' movie series'.split(/ /),
+    decades = ' 2020s 2010s 2000s 1990s 1980s 1970s 1960s 1950s 1940s 1930s'.split(/ /)
+d3.csv('/movies.csv', function(data) {
+  // Add filters
+  raw_data = data
+  d3.select('#Genre').selectAll('option')
+      .data(genres)
+    .enter().append('option')
+      .text(String)
+  d3.select('#Type').selectAll('option')
+      .data(types)
+    .enter().append('option')
+      .text(String)
+  d3.select('#Year').selectAll('option')
+      .data(decades)
+    .enter().append('option')
+      .text(String)
+      .property('value', d => d ? '^' + d.slice(0, 3) : '')
+
+  function set_hash() {
+    var genre = d3.select('#Genre').property('value'),
+        type = d3.select('#Type').property('value'),
+        decade = d3.select('#Year').property('value'),
+        title = d3.select('#Title').property('value').replace(/^ */, '').replace(/ *$/, ''),
+        hashes = []
+    if (genre)  hashes.push('Genre=' + encodeURIComponent(genre))
+    if (type)   hashes.push('Type=' + encodeURIComponent(type))
+    if (decade) hashes.push('Year=' + encodeURIComponent(decade))
+    if (title)  hashes.push('Title=' + encodeURIComponent(title))
+    window.location.hash = hashes.join('&')
+  }
+
+  d3.selectAll('#Genre, #Type, #Year').on('change', set_hash)
+  d3.selectAll('#Title').on('keyup', set_hash)
+  d3.select(window).on('hashchange', draw).on('hashchange')()
+
+  // Add legend
+  var ratingformat = d3.format('.1f')
+  var rating = grid.selectAll('.rating')
+      .data(d3.range(2, 10))
+    .enter().append('g')
+      .classed('rating', true)
+      .attr('transform', d => `translate(0,${scale(ratingscale(d))})`)
+  rating.append('text')
+    .attr('x', width + 25)
+    .attr('text-anchor', 'end')
+    .attr('dy', '.35em')
+    .text(ratingformat)
+  rating.append('path')
+    .attr('d', `M0,0h${width}`)
+
+  var voteformat = d3.format('.0f')
+  var vote = grid.selectAll('.vote')
+      .data([10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000])
+    .enter().append('g')
+      .classed('vote', true)
+      .attr('transform', d => `translate(${scale(votescale(d))},0)`)
+  vote.append('text')
+    .attr('y', width)
+    .attr('dy', '1em')
+    .attr('text-anchor', d => d == 10000 ? 'start' : 'middle')
+    .text(d => voteformat(d / 1000) + 'K')
+  vote.append('path')
+    .attr('d', `M0,0v${width}`)
+
+  grid.append('text').text('Rating').attr({
+    x: width + 25,
+    dy: '1em',
+    'text-anchor': 'end'
+  })
+  grid.append('text').text('# votes').attr({
+    x: scale(votescale(1000000)),
+    y: width,
+    dy: '-1em',
+    'text-anchor': 'middle'
+  })
+})
+
+function draw(filter) {
+  var data = raw_data
+
+  if (typeof filter == 'function') {
+    data = data.filter(filter)
+  } else {
+    var hashes = window.location.hash.replace(/^#/, '').split('&')
+    hashes.forEach(function(hash) {
+      var parts = hash.split(/=/),
+          key = parts[0],
+          value = decodeURIComponent(parts.slice(1).join('='))
+      if (key && value) {
+        d3.select('#' + key).property('value', value)
+        data = data.filter(d => d[key].match(new RegExp(value, 'i')))
+      }
+    })
+  }
+
+  grid.selectAll('.cell, .brush').remove()
+  var table = d3.select('.table')
+
+  var i=data.length
+  if (i == 0) {
+    return
+  }
+  var row,
+      lo = Math.log(10000),
+      range = Math.log(1100000) - lo,
+      cell = {},
+      max = 0
+  while (i--) {
+    row = data[i]
+    row['Votes'] = +row['Votes']
+    var y = Math.round(ratingscale(row['Rating'])),
+    x = Math.round(votescale(row['Votes'])),
+        key = x + ',' + y,
+        list = cell[key] || (cell[key] = [])
+    list.push(row)
+    var len = list.length
+    if (len > max) { max = len }
+  }
+
+  function count(key, genre) {
+    if (typeof genre == 'undefined') {
+      return cell[key].length
+    } else {
+      var count=0,
+          list=cell[key],
+          i=list.length
+      while (--i) {
+        if (list[i].Genre.match(genre)) {
+          count += 1
+        }
+      }
+      return count
+    }
+  }
+
+  var opacity = d3.scale.linear()
+      .domain([0, max])
+      .range([0, 1])
+      .clamp(true)
+  var cells = grid.selectAll('.cell')
+      .data(d3.keys(cell).map(function(d) {
+        var xy = d.split(',')
+        return {x: +xy[0], y: +xy[1], key: d}
+      }))
+    .enter().append('rect')
+      .classed('cell', true)
+      .attr('x', d => width / 90 * d.x)
+      .attr('y', d => width / 90 * d.y)
+      .attr('fill-opacity', d => opacity(count(d.key)))
+      .attr('width', width / 90)
+      .attr('height', width / 90)
+
+
+  function show_table(data) {
+    table.selectAll('tbody *').remove()
+    if (!data || data.length == 0) {
+      table.style('display', 'none')
+      return
+    } else {
+      table.style('display', 'block')
+    }
+    var MAX = 30
+    var rows = table.select('tbody').selectAll('.movie')
+        .data(data.slice(0, MAX))
+      .enter().append('tr')
+        .classed('movie', true)
+    rows.append('td')
+      .append('a')
+        .attr('href', d => `http://www.imdb.com/title/${d.ID}/`)
+        .attr('target', '_blank')
+        .text(d => d.Title)
+    rows.append('td').text(d => comma(d.Votes))
+    rows.append('td').text(d => d.Rating)
+    if (data.length > MAX) {
+      table.select('tbody').append('tr').append('td').text('... ' + (data.length - MAX) + ' more')
+    }
+    var tablerect = table.node().getBoundingClientRect(),
+        brush = d3.select('.brush .extent').node().getBoundingClientRect(),
+        gridrect = grid.node().getBoundingClientRect(),
+        left, top
+    if (d3.event.type == 'mousemove') {
+      var pos = d3.mouse(mainnode)
+      left = pos[0] - 100
+      top = pos[1] + 25
+    } else {
+      left = brush.left - gridrect.left,
+      top = brush.top + brush.height + 10
+    }
+    table.style({
+      left: left + 'px',
+      top: top + 'px'
+    })
+  }
+
+  var comma = d3.format(',d'),
+      mainnode = d3.select('.main').node(),
+      brushcount = 0
+  var brush = grid.append('g')
+    .classed('brush', true)
+    .call(d3.svg.brush()
+      .x(scale)
+      .y(scale)
+      .on('brush', function() {
+        var extent = d3.event.target.extent()
+        brushcount = 0
+        cells.classed('active', function(d) {
+          d.active = extent[0][0] <= d.x + 1 && d.x <= extent[1][0]
+                  && extent[0][1] <= d.y + 1 && d.y <= extent[1][1]
+          if (d.active) { brushcount++ }
+          return d.active
+        })
+      })
+      .on('brushend', function() {
+        var nodes = cells.filter(d => d.active).data()
+        var groups = nodes.map(node => cell[node.key])
+        var data = []
+        data = data.concat.apply(data, groups)
+        data.sort((a, b) => a.Votes < b.Votes ? + 1 : a.Votes > b.Votes ? -1 : 0 )
+        show_table(data)
+      })
+    )
+  var lastkey
+  grid.on('mousemove', function() {
+    if (brushcount > 0) { return }
+    var gridpos = d3.mouse(d3.select('.grid').node()),
+        x = Math.floor(scale.invert(gridpos[0])),
+        y = Math.floor(scale.invert(gridpos[1])),
+        key = x + ',' + y
+    if (key == lastkey) { return }
+    lastkey = key
+
+    cells.classed('active', d => x == d.x && y == d.y)
+    var data = cell[key]
+    if (data)
+      data.sort((a, b) => a.Votes < b.Votes ? + 1 : a.Votes > b.Votes ? -1 : 0)
+    show_table(data)
+  })
+}
+</script>
+</body></html>
